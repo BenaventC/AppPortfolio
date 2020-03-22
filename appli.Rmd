@@ -1,0 +1,236 @@
+---
+title: "Les applications qu'utilisent les Etudiants"
+author: "CB"
+date: "19 mars 2020"
+output:
+  html_document: default
+  word_document: default
+---
+
+# préparation
+
+Les éléments sont disponibles dans le repo 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache=TRUE, message=FALSE,warning = FALSE)
+library(readr)
+library(tidyverse)
+library(quanteda)
+library(stringr)
+library(pals)
+library(ape)
+NFM2019 <- read_csv("NFM2019.csv")
+```
+
+## Le nombre d'applis
+
+Trois questions ont été posées à une promotion de licence dans le cadre d'un cours de marketing. Ils y ont répondu avec application :
+
+* Combien d'applications sont installées sur votre smartphone ?
+* Combien en utilisez vous ?
+* Lesquelles vous sont indispensables ? (énonciation)
+
+En comptant les applis énoncées, on obtient une troisième mesure : le nombre d'applications jugées indispensables, et la liste des noms de ces applications.
+
+
+Le résultat est clair. Le nombre d'applications jugées indispensables, et énoncées explicitement, a une médiane de 7. Le nombre médian d'application utiles déclaré est de 15. les applications installées sont de l'ordre de 51. Naturellement on donnera un plus grand crédit à la première statistique, mais on devra observer que le nombre d'applis installées a finalement peu de chance d'être utilisées, dans un rapport de 1 à 7. 
+
+Quand on examine la corrélation entre le nombre d'applications indispensables et le nombre d'applications installées on observe que la corrélation n'est pas très forte et ne joue que dans la plage de 0 à 100 appli installées. Dans cette plage il y a une relation linéaire entre le nombre d'applis jugée indispensables et le nombre d'appli installées. c'est le signe d'une certaine appétence à réduire les problème par ce type d'outil. AUdelà d'une centaine il n'y a plus de corrélation, c'est une sorte de limte d'apprentissage
+
+
+```{r cars1}
+#library(stringr)
+#on compte le nb d'appli déclarées indispensable
+
+NFM2019$nb_indispensable<-str_count(NFM2019$apps_indispensable, "\\S+")
+
+med1=round(median(NFM2019$nb_apps, na.rm=TRUE),2)
+g1<-ggplot(NFM2019,aes(x=nb_apps))+geom_histogram(binwidth = 1, fill="lightgreen")+xlim(0,250)+theme_minimal()+labs(x="Applications déclarées installées",y="Fréquence")+geom_text(aes(x=med1, y=5, label = med1))
+
+med2=round(median(NFM2019$nb_apps_utiles, na.rm=TRUE),2)
+g2<-ggplot(NFM2019,aes(x=nb_apps_utiles))+geom_histogram(binwidth = 1, fill="pink")+xlim(0,250)+theme_minimal()+labs(x="Applications déclarées utilisées",y="Fréquence")+geom_text(aes(x=med2, y=5, label = med2))
+
+med3=round(median(NFM2019$nb_indispensable, na.rm=TRUE),2)
+g3<-ggplot(NFM2019,aes(x=nb_indispensable))+geom_histogram(binwidth = 1, fill="lightblue")+xlim(0,250)+theme_minimal()+labs(x="Applications indispensables, énoncées",y="Fréquence")+geom_text(aes(x=med3, y=5, label = med3))
+library(gridExtra)
+grid.arrange(g1,g2,g3,nrow=3)
+
+```
+Quand on examine la corrélation entre le nombre d'applications indispensables et le nombre d'applications installées on observe que la corrélation n'est pas très forte et ne joue que dans la plage de 0 à 100 appli installées. Dans cette plage il y a une relation linéaire entre le nombre d'applis jugée indispensables et le nombre d'appli installées. c'est le signe d'une certaine appétence à réduire les problème par ce type d'outil. AUdelà d'une centaine il n'y a plus de corrélation, c'est une sorte de limte d'apprentissage
+
+```{r cars2}
+
+ggplot(NFM2019,aes(x=nb_apps,y=nb_indispensable))+geom_point(size=2,color="red")+xlim(0,250)+ylim(0,30)+theme_minimal()+geom_smooth(method="gam")+labs(title="Applications indispensables et installées ( et valeurs médianes)",x="Applications installées",y="Applications indispensables")
+```
+
+## La distribution des usages
+
+
+Il y a bien sur des applis vedettes que tous utilisent, mais aussi d'autres plus rares. Le résultat est clair : plus de 200 applications différentes sont cité par nos 314 répondants, mais dans les 10 premières ce sont des réseaux sociaux, la 10ème c'est celle de la RATP présente dans un peu moins de 20% des smratphone.
+
+```{r word1}
+NFM2019<-NFM2019 %>% filter(nb_indispensable>2)
+corp <- corpus(NFM2019$apps_indispensable, docvars=(NFM2019))  # build a new corpus from the texts
+tok <- tokens(corp, remove_punct = TRUE, tolower = TRUE)
+dfm <- dfm(tok)
+
+#les 10 applis les plus fréquentes
+textstat_frequency(dfm, n = 10) 
+```
+LA distribution suit une loi de zipf caractéristique. Seule une quinzaine d'applis sont présente dans plus de 25 téléphones.
+
+
+```{r word1b}
+
+theme_set(theme_minimal())
+textstat_frequency(dfm, n = 1000) %>% 
+  ggplot(aes(x = rank, y = frequency)) +
+  geom_point() +
+  labs(title="Distribution de la fréquence des applications par rang",x = "rangs", y = "Fréquence du terme")
+#construction du dico
+n=120
+words<-textstat_frequency(dfm, n=n )
+dict<-textstat_frequency(dfm, n=n ) %>% select(feature) %>% as.list()
+
+#write.csv(words,"words.csv")
+
+words <- read_csv("words.csv")
+
+dict <- dictionary(dict)
+dfm_core<- dfm_select(dfm, pattern = dict)
+```
+
+Un worcloud.
+
+Cinqs applications dominent : whatsapp, instagram, snapchat, youtube, et messenger.La fonction sociale est dominante. A une échelle inférieure on trouve des applications utilitaire et celle de transports ( essentielles pour les étudiants)
+
+```{r word2,fig.height=6}
+
+dfm_core2<-dfm_trim(dfm_core, min_termfreq = 3, max_docfreq = 200)
+textplot_wordcloud(dfm_core2, rotation = 0.25,
+                   color = rev(RColorBrewer::brewer.pal(10, "RdBu")))
+
+#textstat_frequency(dfm_core, n = 50) %>% 
+#  ggplot(aes(x = reorder(feature, -rank), y = frequency)) +
+#  geom_point(stat = "identity") + coord_flip() + 
+#  labs(x = "", y = "Term Frequency")
+```
+et pour une analyse plus fine on a catagorisés les types d'applis et on représente celle qui ont été cité au moins 8 fois.
+
+Il y a une hierachie des catégorie : d'abord les réseaux sociaux, ensuite la mobilité, les utilitaires et ensuite les applis de consommation.
+
+```{r word2b,fig.height=6}
+
+#selection les appli cité 8 fois ou plus
+foo<-words %>% filter(frequency>7)
+ggplot(foo,aes(x=reorder(feature,-rank),y=docfreq, group=group))+geom_point(aes(color=group), size=3)+coord_flip()+scale_color_manual(values=as.vector(stepped2(13)))+labs(title="Nombre d'utilisateurs - n=314",y = " nombre d'utilisateurs qui citentl'appli  parmi leurs indispensables", cex.lab=1.0)
+
+```
+Cette dernière question a du faire l'objet d'un retraitement manuel important. D'une part pour enlever les éléments de commentaires et ne garder que les "bag" d'application, ensuite pour uniformiser les dénomminations.
+
+sur le point point on notera que si la plus part ont ennoncé simplement les applis, d'autres les sont classés, soit par ordre d'importance, ou par champs d'utilisation : la mobilité, l'interaction avec les proches, l'information générale.
+
+Sur le second point ont a agit de manière itérative pour réduire les variantes morphologiques. Nombre d'appli donc les bancaire, n'ont pas de noms stabilisés!
+
+
+# Tentons un clustering
+
+Avec une représentation sous forme de cladogramme
+
+La mesure de distance est le le [coefficient de dice](https://fr.wikipedia.org/wiki/Indice_de_S%C3%B8rensen-Dice) mots. Deux mots seront d'autant plus proches qu'ils partagent les mêmes utilisateurs. Ce coefficient en effet rapporte le nombre de termes communs ( les utilisateurs) à la somme des utilisateurs de chacune des applications. 
+
+Cette mesure ne mesure pas leur similarité fonctionelle, mais des similarités d'usage, si on emploie une applis a -t-on de forte chance d'employer l'autre. Les groupes se determinent donc dans le co-usage, et signale moins des rapport de similarité fonctionnelle, que des rapport de complémentarité d'usage. 
+
+Pour bien comprendre le résultat, il faut se dire que les combinaisons de base se construisent sur un mix de quelques grandes fonctions : 
+
+ * Communiquer avec les autres, 
+ * S'informer sur l'actualité, 
+ * Résoudre des problèmes de transports
+ * Résoudre des problèmes de consommation, 
+ * Gérer ses finances et ses paiements
+ * Assurer des fonctionnalités de base
+ * S'occuper de son corps : le sport, le care, 
+ * Ecouter de la musique, regarder des video, jouer, se cultiver
+ 
+En examinant le caldogram on identifie 8 associations, on laisse au lecteur le soin de faire ses interprétations. Mais on gardera en tête qu'il y a une structure de base sans doute : un ou deux réseaux sociaux, des applications de mobilités, la banque et le paiement se dispersent. La presence d'applis typées par le genre (clue) , le centre d'interêt ( wattpad), le caractère commercial apportent des inflexions
+
+1 - Optmimisers
+2 - bon plans
+3 - appleconso
+4 - Urbains
+
+```{r word3, fig.height=9,fig.width=9}
+tstat_dist <- as.dist(textstat_simil(dfm_core2,margin = "features",  method ="dice"))
+
+fit <-hclust(tstat_dist)
+library(ape)
+m=4
+# vector of colors
+library("RColorBrewer")
+mypal<- brewer.pal(n = m, name = 'Set1')
+
+# cutting dendrogram in 8 clusters
+clus = cutree(fit, m)
+# plot
+# Size reflects frequency
+mypal<-tol(n = m)
+plot(as.phylo(fit), type = "cladogram", tip.color = mypal[clus], cex = .7, col = "red",no.margin=TRUE)
+
+clus<-as.data.frame(clus)
+clus$feature<-rownames(clus)
+clus$clust[clus$clus==1]<-"Optimisers"
+clus$clust[clus$clus==2]<-"Opportunistes"
+clus$clust[clus$clus==3]<-"Appleconso"
+clus$clust[clus$clus==4]<-"Urbain"
+
+```
+
+
+## projetons dans un plan ces relations complexes
+
+Comme il y a de nombreux objets, nous choisissons la méthode tsne qui permet un réglage fin des distances en fonction de la concentration des objets.
+
+On utilise la métrique du cosinus. S'il est proche de 1, c'est que le terme utilisé est associé au terme test. Deux applis seront proches quand elles sont utilisées en même temps. 
+
+La representation est obtenue avec Tsne en deux dimensions et avec une perplexité de 6.
+
+Les catégories résultent d'un codage manuel des 120 applications dont la fréquence est > 3. Il est largement subjectif.
+
+
+On observe deux grands pôles. 
+
+```{r word4, fig.height=9,fig.width=9}
+library(pals)
+
+tstat_dist <- as.dist(textstat_simil(dfm_core,margin = "features",  method ="cosine"))
+
+library(Rtsne)
+set.seed(23)
+tsne_out <- Rtsne(tstat_dist,perplexity=6)
+tsne_plot <- data.frame(x = tsne_out$Y[,1], y = tsne_out$Y[,2])
+clus<-as.data.frame(clus)
+clus$feature<-rownames(clus)
+terms<-words %>% left_join(clus, by = "feature")
+tsne_plot<-cbind(terms,tsne_plot)
+tsne_plot$clus<-as.factor(tsne_plot$clus)
+ggplot(tsne_plot, aes(x=x,y=y,group=group)) +geom_text(aes(label=feature,colour = group,size=log(docfreq),hjust=0, vjust=0))+scale_color_manual(values=as.vector(stepped2(15)))
+
+ggplot(tsne_plot, aes(x=x,y=y,group=clust)) +geom_text(aes(label=feature,colour = clust,size=log(docfreq),hjust=0, vjust=0))+scale_color_manual(values=as.vector(tol(4)))
+
+```
+
+# du lda
+```{r word6}
+
+LDA <- dfm(corp, 
+                remove_punct = TRUE, remove_numbers = TRUE, 
+                remove = stopwords("french")) %>% 
+    dfm_trim(min_termfreq = 4, max_docfreq = 300)
+
+library(topicmodels)
+LDA_fit_20 <- convert(LDA, to = "topicmodels") %>% 
+    LDA(k = 4)
+
+# get top five terms per topic
+get_terms(LDA_fit_20, 20)
+
+```
